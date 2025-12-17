@@ -1,0 +1,16 @@
+{
+  "name": "bigocalculator",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+
+  },
+  "keywords": [],
+  "author": "Aurelio Florez",
+  "license": "ISC",
+  "dependencies": {
+    "acorn": "^8.15.0",
+    "simple-statistics": "^7.8.8"
+  }
+}
