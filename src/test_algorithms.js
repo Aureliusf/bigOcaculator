@@ -1,4 +1,6 @@
 // src/test_algorithms.js
+//
+// Knonw bigO times for testing
 
 // O(1) - Constant Time Complexity
 // The execution time does not depend on the input size.
