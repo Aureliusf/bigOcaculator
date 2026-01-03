@@ -2,8 +2,9 @@ const path = require('path');
 const { runAnalysis, determineComplexity } = require('./calculator');
 const algorithms = require('./test_algorithms');
 const { getNumberFromConsole, getOptionFromConsole, getStringFromConsole } = require('./utils/input');
+const { createGraph } = require('./utils/plot');
 
-function main() {
+async function main() {
   console.log("---- Big O Calculator & Tester ----");
 
   // 1. Select Algorithm Source
@@ -113,6 +114,14 @@ function main() {
   complexity.results.forEach(res => {
     console.log(`  ${res.type}: ${res.r2.toFixed(4)}`);
   });
+
+  // 6. Generate Graph
+  try {
+    const graphPath = await createGraph(dataPoints, complexity.bestFit);
+    console.log(`\nGraph generated: ${graphPath}`);
+  } catch (error) {
+    console.error(`\nFailed to generate graph: ${error.message}`);
+  }
 }
 
 main();
