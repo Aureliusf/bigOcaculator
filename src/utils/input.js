@@ -30,7 +30,16 @@ function getOptionFromConsole(message, options) {
   return options[index];
 }
 
+function getStringFromConsole(message) {
+  let userInput = readlineSync.question(message);
+  if (userInput === null || userInput === '') {
+    return null;
+  }
+  return userInput;
+}
+
 module.exports = {
   getNumberFromConsole,
   getOptionFromConsole,
+  getStringFromConsole,
 };

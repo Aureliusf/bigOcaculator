@@ -1,17 +1,57 @@
+const path = require('path');
 const { runAnalysis, determineComplexity } = require('./calculator');
 const algorithms = require('./test_algorithms');
-const { getNumberFromConsole, getOptionFromConsole } = require('./utils/input');
+const { getNumberFromConsole, getOptionFromConsole, getStringFromConsole } = require('./utils/input');
 
 function main() {
   console.log("---- Big O Calculator & Tester ----");
 
-  // 1. Select Algorithm
-  const algoNames = Object.keys(algorithms);
-  const selectedAlgoName = getOptionFromConsole("Select an algorithm to test:", algoNames);
+  // 1. Select Algorithm Source
+  const sourceOptions = ['Built-in Algorithms', 'Load Custom Function from File'];
+  const source = getOptionFromConsole("Select algorithm source:", sourceOptions);
+  
+  if (!source) return;
 
-  if (!selectedAlgoName) return;
+  let algorithm;
+  let selectedAlgoName;
 
-  let algorithm = algorithms[selectedAlgoName];
+  if (source === 'Built-in Algorithms') {
+    const algoNames = Object.keys(algorithms);
+    selectedAlgoName = getOptionFromConsole("Select an algorithm to test:", algoNames);
+    if (!selectedAlgoName) return;
+    algorithm = algorithms[selectedAlgoName];
+  } else {
+    // Load custom function
+    const filePath = getStringFromConsole("Enter absolute path to file (or relative to current dir): ");
+    if (!filePath) return;
+
+    let absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
+    
+    try {
+      console.log(`Loading module from: ${absolutePath}`);
+      const customModule = require(absolutePath);
+      
+      if (typeof customModule === 'function') {
+        algorithm = customModule;
+        selectedAlgoName = customModule.name || 'Custom Function';
+      } else if (typeof customModule === 'object') {
+        const exports = Object.keys(customModule).filter(k => typeof customModule[k] === 'function');
+        if (exports.length === 0) {
+          console.error("No exported functions found in that file.");
+          return;
+        }
+        selectedAlgoName = getOptionFromConsole("Select exported function to test:", exports);
+        if (!selectedAlgoName) return;
+        algorithm = customModule[selectedAlgoName];
+      } else {
+        console.error("Module does not export a function or object.");
+        return;
+      }
+    } catch (error) {
+      console.error(`Error loading file: ${error.message}`);
+      return;
+    }
+  }
 
   // Special handling for logarithmicTime to provide the 'target' argument
   if (selectedAlgoName === 'logarithmicTime') {

@@ -31,16 +31,48 @@ function runAnalysis(algorithm, inputSizes, iterations = 10) {
   }
 
   for (const n of inputSizes) {
+    // Adaptive Batching Calibration
+    // Determine how many iterations (batchSize) are needed to get a measurable execution time (~10ms)
+    // This is crucial for very fast algorithms (O(1), O(log n)) to avoid system timer noise.
+    let batchSize = 1;
+    let calibrationArray = generateInputArray(n);
+    let calStart = performance.now();
+    let calEnd = calStart;
+    let calCount = 0;
+    
+    // Run until at least 5ms have passed or we hit a safety limit
+    // We increment calCount to avoid infinite loops if the clock doesn't advance
+    while ((calEnd - calStart) < 5 && calCount < 1000000) {
+        // Execute the algorithm
+        // Note: We reuse the array. This assumes the algorithm is read-only or idempotent.
+        // For O(1)/O(log n) detection, this is usually true and necessary for accuracy.
+        algorithm(calibrationArray);
+        calCount++;
+        calEnd = performance.now();
+    }
+
+    const calDuration = calEnd - calStart;
+    if (calCount > 1) {
+        // If we needed multiple runs to reach 5ms, we calculate a batchSize for ~15ms per measurement
+        // batchSize = (Target Time / Time per Op) = (15 / (calDuration / calCount))
+        //             = (15 * calCount) / calDuration
+        batchSize = Math.ceil((15 * calCount) / (calDuration || 0.001));
+    }
+
     const times = [];
     for (let i = 0; i < iterations; i++) {
-      // Create a fresh array for each iteration to avoid side effects (like sorting in place)
-      // although for simple read algorithms it might not matter, for sort it does.
+      // Create a fresh array for each iteration
       let array = generateInputArray(n);
 
       const start = performance.now();
-      algorithm(array);
+      // Execute batch
+      for (let b = 0; b < batchSize; b++) {
+          algorithm(array);
+      }
       const end = performance.now();
-      times.push(end - start);
+      
+      // Calculate average time per single execution
+      times.push((end - start) / batchSize);
     }
 
     const avgTime = ss.mean(times);
@@ -63,16 +95,39 @@ function determineComplexity(dataPoints) {
   const timeValues = dataPoints.map(d => d.time);
 
   // Prepare data for regression models
-  // 1. O(1) Constant: Time vs N (Slope should be ~0, but R^2 is tricky here if strictly flat.
-  //    Usually we check if variance is low or slope is near zero.
-  //    For R^2 comparison, we can treat it as linear with slope 0? 
-  //    Let's stick to standard regressions for growth.
-
-  // 2. O(n) Linear: Time vs N
+  // 1. O(1) Constant: Time vs N
+  // We check if the slope of the linear regression is negligible.
   const linearData = dataPoints.map(d => [d.n, d.time]);
   const linearModel = ss.linearRegression(linearData);
   const linearLine = ss.linearRegressionLine(linearModel);
   const linearR2 = ss.rSquared(linearData, linearLine);
+
+  const slope = linearModel.m;
+  const minN = Math.min(...nValues);
+  const maxN = Math.max(...nValues);
+  const meanTime = ss.mean(timeValues);
+  // Calculate total predicted growth across the input range
+  const totalGrowth = slope * (maxN - minN);
+  
+  // If growth is less than 20% of the average execution time (or negative due to noise), assume O(1)
+  // We relaxed this from 5% to 20% because for very fast operations (micro-seconds), system noise 
+  // can easily simulate a 5-10% "growth" or fluctuation.
+  // We also check if the Linear R^2 is very low (< 0.6), which implies N doesn't explain the time changes (noise).
+  const isConstantTime = slope < 0 || (meanTime > 0 && totalGrowth < 0.2 * meanTime) || linearR2 < 0.6;
+
+  if (isConstantTime) {
+      return {
+          bestFit: 'O(1) - Constant',
+          results: [
+              { type: 'O(1) - Constant', r2: 1.0 },
+              { type: 'O(n) - Linear', r2: linearR2 },
+              // We'll calculate the others just for completeness if needed, but returning here is fine
+          ]
+      };
+  }
+
+  // 2. O(n) Linear: Time vs N
+  // (Already calculated linearR2 above)
 
   // 3. O(n^2) Quadratic: Time vs N^2
   // We model Time = a * N^2 + b
