@@ -3,6 +3,7 @@ const { runAnalysis, determineComplexity } = require('./calculator');
 const algorithms = require('./test_algorithms');
 const { getNumberFromConsole, getOptionFromConsole, getStringFromConsole } = require('./utils/input');
 const { createGraph } = require('./utils/plot');
+const { getFileWithAutocomplete } = require('./utils/inputAsync');
 
 async function main() {
   console.log("---- Big O Calculator & Tester ----");
@@ -23,7 +24,7 @@ async function main() {
     algorithm = algorithms[selectedAlgoName];
   } else {
     // Load custom function
-    const filePath = getStringFromConsole("Enter absolute path to file (or relative to current dir): ");
+    const filePath = await getFileWithAutocomplete("Enter path to file (Tab for autocomplete): ");
     if (!filePath) return;
 
     let absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
@@ -59,6 +60,10 @@ async function main() {
     // Wrap it to search for a value that doesn't exist (-1) for worst-case performance
     const originalAlgo = algorithm;
     algorithm = (arr) => originalAlgo(arr, -1);
+    
+    // Provide a recommendation to the user for better accuracy with logarithmic functions
+    console.log("\n\x1b[36mRecommendation:\x1b[0m For logarithmic functions like binary search, the performance curve is very flat.");
+    console.log("For best results, use the 'Powers of 10' or 'Doubling' growth strategy with a large max input (e.g., 10^6 or more) to make the trend more apparent.\n");
   }
 
   // 2. Select Input Growth Strategy
@@ -110,14 +115,23 @@ async function main() {
   const complexity = determineComplexity(dataPoints);
   console.log("\n--- Complexity Analysis ---");
   console.log(`Most likely Big O: \x1b[32m${complexity.bestFit}\x1b[0m`); // Green color
-  console.log("Fit Scores (R^2):");
+  
+  // Show Confidence
+  const confidenceColor = complexity.confidence > 75 ? '\x1b[32m' : '\x1b[31m'; // Green if > 75, Red if <= 75
+  console.log(`Confidence: ${confidenceColor}${complexity.confidence}%\x1b[0m`);
+  
+  if (complexity.confidence <= 75) {
+      console.log("\x1b[33mWarning: Low confidence detected. The data may be noisy or the algorithm might differ from standard complexity classes.\x1b[0m");
+  }
+
+  console.log("Model Fit (RMSE - Lower is better):");
   complexity.results.forEach(res => {
-    console.log(`  ${res.type}: ${res.r2.toFixed(4)}`);
+    console.log(`  ${res.type}: ${res.rmse.toFixed(6)}`);
   });
 
   // 6. Generate Graph
   try {
-    const graphPath = await createGraph(dataPoints, complexity.bestFit);
+    const graphPath = await createGraph(dataPoints, complexity.bestFit, complexity.confidence);
     console.log(`\nGraph generated: ${graphPath}`);
   } catch (error) {
     console.error(`\nFailed to generate graph: ${error.message}`);

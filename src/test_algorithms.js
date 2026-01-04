@@ -50,6 +50,7 @@ function logarithmicTime(arr, target) {
 }
 
 
+
 module.exports = {
   constantTime,
   linearTime,

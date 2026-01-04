@@ -25,7 +25,8 @@ function runAnalysis(algorithm, inputSizes, iterations = 10) {
   if (inputSizes.length > 0) {
     const warmupSize = inputSizes[0];
     const warmupArray = generateInputArray(warmupSize);
-    for (let i = 0; i < 5; i++) {
+    // Increased warmup iterations to ensure JIT optimization
+    for (let i = 0; i < 100; i++) {
       algorithm(warmupArray);
     }
   }
@@ -85,107 +86,166 @@ function runAnalysis(algorithm, inputSizes, iterations = 10) {
 }
 
 /**
- * Determines the Big O complexity based on the correlation (R^2) of the data.
+ * Calculates the Root Mean Square Error (RMSE) between actual and predicted values.
+ * @param {Array<number>} actual
+ * @param {Array<number>} predicted
+ * @returns {number}
+ */
+function calculateRMSE(actual, predicted) {
+  const sumSquaredErrors = actual.reduce((sum, val, i) => sum + (val - predicted[i]) ** 2, 0);
+  return Math.sqrt(sumSquaredErrors / actual.length);
+}
+
+/**
+ * Determines the Big O complexity based on the RMSE of various regression models.
  * @param {Array<{n: number, time: number}>} dataPoints
- * @returns {Object} Analysis result with R^2 scores and best fit.
+ * @returns {Object} Analysis result with RMSE scores and best fit.
  */
 function determineComplexity(dataPoints) {
-  // Extract N and Time values
   const nValues = dataPoints.map(d => d.n);
   const timeValues = dataPoints.map(d => d.time);
 
-  // Prepare data for regression models
-  // 1. O(1) Constant: Time vs N
-  // We check if the slope of the linear regression is negligible.
-  const linearData = dataPoints.map(d => [d.n, d.time]);
-  const linearModel = ss.linearRegression(linearData);
-  const linearLine = ss.linearRegressionLine(linearModel);
-  const linearR2 = ss.rSquared(linearData, linearLine);
-
-  const slope = linearModel.m;
-  const minN = Math.min(...nValues);
-  const maxN = Math.max(...nValues);
+  // 1. O(1) Constant: Time = mean(Time)
   const meanTime = ss.mean(timeValues);
-  // Calculate total predicted growth across the input range
-  const totalGrowth = slope * (maxN - minN);
+  const constantPredictions = nValues.map(() => meanTime);
+  const constantRMSE = calculateRMSE(timeValues, constantPredictions);
 
-  // If growth is less than 20% of the average execution time (or negative due to noise), assume O(1)
-  // We also check if the Linear R^2 is very low (< 0.6), which implies N doesn't explain the time changes (noise).
-  const isConstantTime = slope < 0 || (meanTime > 0 && totalGrowth < 0.2 * meanTime) || linearR2 < 0.6;
+  // Helper to run linear regression on transformed data and get RMSE
+  const getRegressionRMSE = (transformFn) => {
+    const data = dataPoints.map(d => [transformFn(d.n), d.time]);
+    const model = ss.linearRegression(data);
+    const line = ss.linearRegressionLine(model);
+    const predictions = dataPoints.map(d => line(transformFn(d.n)));
+    return calculateRMSE(timeValues, predictions);
+  };
 
-  if (isConstantTime) {
-    return {
-      bestFit: 'O(1) - Constant',
-      results: [
-        { type: 'O(1) - Constant', r2: 1.0 },
+  // 2. O(n) Linear
+  const linearRMSE = getRegressionRMSE(n => n);
 
-        // 2. O(n) Linear: Time vs N
-        // (Already calculated linearR2 above)
+  // 3. O(n^2) Quadratic
+  const quadraticRMSE = getRegressionRMSE(n => n ** 2);
 
-        { type: 'O(n) - Linear', r2: linearR2 },
-      ]
-    };
-  }
+  // 4. O(log n) Logarithmic
+  const logRMSE = getRegressionRMSE(n => Math.log(n));
 
-  // 3 - 5 we test how much they adhere to known graphs
+  // 5. O(n log n) Linear-ithmic
+  const nLogNRMSE = getRegressionRMSE(n => n * Math.log(n));
 
-  // 3. O(n^2) Quadratic: Time vs N^2
-  // We model Time = a * N^2 + b
-  const quadraticData = dataPoints.map(d => [d.n ** 2, d.time]);
-  const quadraticModel = ss.linearRegression(quadraticData);
-  const quadraticLine = ss.linearRegressionLine(quadraticModel);
-  const quadraticR2 = ss.rSquared(quadraticData, quadraticLine);
-
-  // 4. O(log n) Logarithmic: Time vs log(N)
-  // We model Time = a * log(N) + b
-  const logData = dataPoints.map(d => [Math.log(d.n), d.time]);
-  const logModel = ss.linearRegression(logData);
-  const logLine = ss.linearRegressionLine(logModel);
-  const logR2 = ss.rSquared(logData, logLine);
-
-  // 5. O(n log n) Linear-ithmic: Time vs N * log(N)
-  const nLogNData = dataPoints.map(d => [d.n * Math.log(d.n), d.time]);
-  const nLogNModel = ss.linearRegression(nLogNData);
-  const nLogNLine = ss.linearRegressionLine(nLogNModel);
-  const nLogNR2 = ss.rSquared(nLogNData, nLogNLine);
-
-  // Find the best fit
   const models = [
-    { type: 'O(n) - Linear', r2: linearR2 },
-    { type: 'O(n^2) - Quadratic', r2: quadraticR2 },
-    { type: 'O(log n) - Logarithmic', r2: logR2 },
-    { type: 'O(n log n) - Linear-ithmic', r2: nLogNR2 }
+    { type: 'O(1) - Constant', rmse: constantRMSE, complexity: 1 },
+    { type: 'O(log n) - Logarithmic', rmse: logRMSE, complexity: 2 },
+    { type: 'O(n) - Linear', rmse: linearRMSE, complexity: 3 },
+    { type: 'O(n log n) - Linear-ithmic', rmse: nLogNRMSE, complexity: 4 },
+    { type: 'O(n^2) - Quadratic', rmse: quadraticRMSE, complexity: 5 }
   ];
 
-  // Sort by R^2 descending
-  models.sort((a, b) => b.r2 - a.r2);
+  models.sort((a, b) => a.rmse - b.rmse);
 
-  // Apply Occam's Razor: Prefer simpler models if R^2 is very close (within 0.01)
-  // Complexity hierarchy (simplest to most complex): O(1) -> O(log n) -> O(n) -> O(n log n) -> O(n^2)
-  // Note: We don't check O(1) in this list explicitly yet.
+  // Apply Occam's Razor 2.0: A simpler model wins if its RMSE is not "statistically worse" than a better-fitting, more complex model.
+  // We define "statistically worse" as being more than `tolerance` percent higher than the best model's RMSE.
+  // This prevents a complex model with a tiny RMSE advantage (e.g., 0.001 vs 0.0011) from winning.
 
   let bestModel = models[0];
-  const tolerance = 0.01;
+  const tolerance = 0.15; // 15% tolerance
 
-  // Check if O(n) is close to the top model (likely O(n log n))
-  const simpleLinear = models.find(m => m.type === 'O(n) - Linear');
-  if (simpleLinear && bestModel.type !== 'O(n) - Linear') {
-    if (bestModel.r2 - simpleLinear.r2 < tolerance) {
-      bestModel = simpleLinear;
+  for (let i = 1; i < models.length; i++) {
+    const candidate = models[i];
+    
+    // If candidate is simpler...
+    if (candidate.complexity < bestModel.complexity) {
+      // And its RMSE is within the tolerance margin of the current best model...
+      const diff = (candidate.rmse - bestModel.rmse) / (bestModel.rmse || 1e-9);
+      if (diff < tolerance) {
+        bestModel = candidate; // ...then prefer the simpler model.
+      }
+    }
+    
+    // A special check for O(log n) vs O(1)
+    // If the best model is O(log n) and O(1) is a close contender, it's often due to noise.
+    // Let's make O(log n) "prove" it's significantly better than O(1).
+    if (bestModel.type.includes('O(log n)')) {
+        const o1_model = models.find(m => m.type.includes('O(1)'));
+        if (o1_model) {
+            // If O(1)'s error is NOT much larger than O(log n)'s error, prefer O(1).
+            // "Much larger" can be defined as, e.g., 3x the error.
+            if (o1_model.rmse < bestModel.rmse * 3) {
+                 // Check if it's not just noise
+                const signalMagnitude = meanTime > 0 ? meanTime : 1;
+                const normalizedError = bestModel.rmse / signalMagnitude;
+                // If the error is very small relative to the measurement, it's likely noise, so prefer O(1).
+                if (normalizedError < 0.1) { // Error is less than 10% of the mean time
+                    bestModel = o1_model;
+                }
+            }
+        }
     }
   }
 
-  // Check if O(log n) is close to the top model
-  const simpleLog = models.find(m => m.type === 'O(log n) - Logarithmic');
-  if (simpleLog && bestModel.type !== 'O(log n) - Logarithmic') {
-    if (bestModel.r2 - simpleLog.r2 < tolerance) {
-      bestModel = simpleLog;
-    }
+  // Final check: If the timing is extremely low and flat, it must be O(1).
+  // This catches cases where O(log n) fits a tiny upward noise trend.
+  const timeVariance = ss.variance(timeValues);
+  const maxTime = ss.max(timeValues);
+  const noiseFloor = 1e-9;
+  
+  if (maxTime < 0.001 && (timeVariance / meanTime) < 0.1) { // < 1 microsecond and low relative variance
+    bestModel = models.find(m => m.type.includes('O(1)'));
   }
+
+  // Calculate Confidence
+  // Confidence is a combination of:
+  // 1. Fit Quality: How well does the best model explain the data?
+  // 2. Separation: How much better is the best model than the next best hypothesis?
+  
+  let confidence;
+  
+  if (bestModel.rmse < noiseFloor) {
+      // If the error is indistinguishable from zero (noise), we are 100% confident it's the simplest model fitting this.
+      confidence = 100;
+  } else {
+      // 1. Fit Quality (0 to 1)
+      // Normalized RMSE (Coefficient of Variation of the Error)
+      // If error is 10% of the signal, fit quality is 0.9.
+      const signalMagnitude = meanTime > 0 ? meanTime : 1;
+      const normalizedError = bestModel.rmse / signalMagnitude;
+      const fitQuality = Math.max(0, 1 - (normalizedError * 2)); // Penalize error more steeply
+      
+      // 2. Separation (0 to 1)
+      // Find the next best model that is NOT the chosen one (based on the sorted 'results' list or original 'models')
+      // Note: 'bestModel' might not be results[0] because of Occam's razor logic above.
+      
+      // Sort models by RMSE again just to be sure we find the runner up in terms of fit
+      const sortedByFit = [...models].sort((a, b) => a.rmse - b.rmse);
+      let secondBest = sortedByFit[0];
+      if (secondBest === bestModel) {
+          secondBest = sortedByFit[1];
+      }
+      
+      let separation = 0;
+      if (secondBest) {
+          // Percent difference between best RMSE and second best RMSE
+          separation = (secondBest.rmse - bestModel.rmse) / (secondBest.rmse || 1);
+          // Clamp to 0-1 range (if second best is way worse, separation is high)
+          separation = Math.min(1, separation);
+      }
+      
+      // Combined Confidence Score
+      // We weight Fit Quality higher because if the data is garbage, separation doesn't matter.
+      confidence = (fitQuality * 0.7 + separation * 0.3) * 100;
+  }
+
+  // Formatting for output (converting RMSE to 4 decimals string if needed, or keeping number)
+  const results = models.map(m => ({
+    type: m.type,
+    rmse: m.rmse
+  }));
+
+  // Re-sort results by RMSE for display purposes
+  results.sort((a, b) => a.rmse - b.rmse);
 
   return {
     bestFit: bestModel.type,
-    results: models
+    confidence: Math.round(confidence),
+    results: results
   };
 }
 
