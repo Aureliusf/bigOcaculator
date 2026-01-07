@@ -1,6 +1,32 @@
 // src/calculator.js
 const { performance } = require('perf_hooks');
 const ss = require('simple-statistics');
+const { VM } = require('vm2');
+
+/**
+ * Executes a user-provided function in a secure sandbox.
+ * @param {string} code The string content of the user's function.
+ * @param {*} input The input to pass to the user's function.
+ * @returns The result of the function execution.
+ * @throws An error if the code is invalid, times out, or contains errors.
+ */
+function runInSandbox(code, input) {
+    const vm = new VM({
+        timeout: 5000, // 5-second timeout per execution
+        sandbox: { input },
+        eval: false,
+        wasm: false,
+        require: false // Disallow require()
+    });
+
+    // We combine the user's code with the call to the function.
+    const fullCode = `
+        ${code}
+        functionToTest(input);
+    `;
+    
+    return vm.run(fullCode);
+}
 
 /**
  * Generates an array of a specified size for testing algorithms.
@@ -18,67 +44,44 @@ function generateInputArray(n) {
  * @param {number} iterations Number of times to run per input size (default 10).
  * @returns {Array<{n: number, time: number}>} An array of data points.
  */
-function runAnalysis(algorithm, inputSizes, iterations = 10, inputMode = 'array') {
+function runAnalysis(code, inputSizes, iterations = 10, inputMode = 'array') {
   const dataPoints = [];
 
-  // Warmup phase: Run with the smallest input size a few times to trigger JIT
+  // The warmup phase is less critical now as each run is isolated, 
+  // but a single, quick initial run can still help initialize things if needed.
   if (inputSizes.length > 0) {
-    const warmupSize = inputSizes[0];
-    const warmupInput = inputMode === 'number' ? warmupSize : generateInputArray(warmupSize);
-    // Increased warmup iterations to ensure JIT optimization
-    for (let i = 0; i < 100; i++) {
-      algorithm(warmupInput);
+    try {
+        const warmupSize = inputSizes[0];
+        const warmupInput = inputMode === 'number' ? warmupSize : generateInputArray(warmupSize);
+        runInSandbox(code, warmupInput);
+    } catch (e) {
+        // If warmup fails, it's a strong indicator the user's code is broken.
+        // We should probably throw this error to be caught by the server handler.
+        console.error('Warmup execution failed:', e.message);
+        throw new Error(`Execution failed during warmup: ${e.message}`);
     }
   }
 
   for (const n of inputSizes) {
-    // Adaptive Batching Calibration
-    // Determine how many iterations (batchSize) are needed to get a measurable execution time (~10ms)
-    // This is crucial for very fast algorithms (O(1), O(log n)) to avoid system timer noise.
-    let batchSize = 1;
-    const calibrationInput = inputMode === 'number' ? n : generateInputArray(n);
-    let calStart = performance.now();
-    let calEnd = calStart;
-    let calCount = 0;
-
-    // Run until at least 5ms have passed or we hit a safety limit
-    // We increment calCount to avoid infinite loops if the clock doesn't advance
-    while ((calEnd - calStart) < 5 && calCount < 1000000) {
-      // Execute the algorithm
-      // Note: We reuse the input. This assumes the algorithm is read-only or idempotent.
-      // For O(1)/O(log n) detection, this is usually true and necessary for accuracy.
-      algorithm(calibrationInput);
-      calCount++;
-      calEnd = performance.now();
-    }
-
-    const calDuration = calEnd - calStart;
-    if (calCount > 1) {
-      // If we needed multiple runs to reach 5ms, we calculate a batchSize for ~15ms per measurement
-      // batchSize = (Target Time / Time per Op) = (15 / (calDuration / calCount))
-      //             = (15 * calCount) / calDuration
-      batchSize = Math.ceil((15 * calCount) / (calDuration || 0.001));
-    }
-
     const times = [];
     for (let i = 0; i < iterations; i++) {
-      // Generate the correct input type for each iteration
       const inputForAlgorithm = inputMode === 'number' ? n : generateInputArray(n);
-
-      const start = performance.now();
-      // Execute batch
-      for (let b = 0; b < batchSize; b++) {
-        algorithm(inputForAlgorithm);
+      
+      try {
+        const start = performance.now();
+        runInSandbox(code, inputForAlgorithm);
+        const end = performance.now();
+        times.push(end - start);
+      } catch (e) {
+        // If any iteration fails (e.g., timeout), we invalidate the results for this input size.
+        console.error(`Execution failed for input size ${n}:`, e.message);
+        // We will return the data points gathered so far and let the server decide how to proceed.
+        // Or we could throw, aborting the whole analysis. Let's throw to be safe.
+        throw new Error(`Execution timed out or failed for input size n=${n}. Details: ${e.message}`);
       }
-      const end = performance.now();
-
-      // Calculate average time per single execution
-      times.push((end - start) / batchSize);
     }
 
     const avgTime = ss.mean(times);
-    // or use median to remove outliers: const avgTime = ss.median(times); 
-
     dataPoints.push({ n, time: avgTime });
   }
 
