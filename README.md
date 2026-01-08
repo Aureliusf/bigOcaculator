@@ -33,12 +33,13 @@ Technologies Used
 
 ### Installation & Running the App
 1.  Clone the repository:
-        ```
+    ```
           git clone https://github.com/Aureliusf/bigOcalculator.git
-        ```
-        ```
+    ```
+
+    ```
           cd bigOcalculator
-        ```
+    ```
     
 2.  Install all dependencies:
     This single command will install dependencies for the root, server, and web-frontend packages.
