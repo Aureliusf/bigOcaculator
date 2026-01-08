@@ -5,17 +5,17 @@
 Build artifacts
 /web-frontend/build
 /graph.png
-Environment variables
+# Environment variables
 .env
 .envrc
-Logs
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 OS-specific
 .DS_Store
 Thumbs.db
-Nix environment files
+# Nix environment files
 .direnv/
 shell.nix
 result*
