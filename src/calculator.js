@@ -1,5 +1,6 @@
 // src/calculator.js
 const { performance } = require('perf_hooks');
+const { stringify } = require('querystring');
 const ss = require('simple-statistics');
 const { VM } = require('vm2');
 
@@ -11,21 +12,21 @@ const { VM } = require('vm2');
  * @throws An error if the code is invalid, times out, or contains errors.
  */
 function runInSandbox(code, input) {
-    const vm = new VM({
-        timeout: 5000, // 5-second timeout per execution
-        sandbox: { input },
-        eval: false,
-        wasm: false,
-        require: false // Disallow require()
-    });
+  const vm = new VM({
+    timeout: 5000, // 5-second timeout per execution
+    sandbox: { input },
+    eval: false,
+    wasm: false,
+    require: false // Disallow require()
+  });
 
-    // We combine the user's code with the call to the function.
-    const fullCode = `
+  // We combine the user's code with the call to the function.
+  const fullCode = `
         ${code}
         functionToTest(input);
     `;
-    
-    return vm.run(fullCode);
+
+  return vm.run(fullCode);
 }
 
 /**
@@ -51,14 +52,14 @@ function runAnalysis(code, inputSizes, iterations = 10, inputMode = 'array') {
   // but a single, quick initial run can still help initialize things if needed.
   if (inputSizes.length > 0) {
     try {
-        const warmupSize = inputSizes[0];
-        const warmupInput = inputMode === 'number' ? warmupSize : generateInputArray(warmupSize);
-        runInSandbox(code, warmupInput);
+      const warmupSize = inputSizes[0];
+      const warmupInput = inputMode === 'number' ? warmupSize : generateInputArray(warmupSize);
+      runInSandbox(code, warmupInput);
     } catch (e) {
-        // If warmup fails, it's a strong indicator the user's code is broken.
-        // We should probably throw this error to be caught by the server handler.
-        console.error('Warmup execution failed:', e.message);
-        throw new Error(`Execution failed during warmup: ${e.message}`);
+      // If warmup fails, it's a strong indicator the user's code is broken.
+      // We should probably throw this error to be caught by the server handler.
+      console.error('Warmup execution failed:', e.message);
+      throw new Error(`Execution failed during warmup: ${e.message}`);
     }
   }
 
@@ -66,7 +67,7 @@ function runAnalysis(code, inputSizes, iterations = 10, inputMode = 'array') {
     const times = [];
     for (let i = 0; i < iterations; i++) {
       const inputForAlgorithm = inputMode === 'number' ? n : generateInputArray(n);
-      
+
       try {
         const start = performance.now();
         runInSandbox(code, inputForAlgorithm);
@@ -74,7 +75,7 @@ function runAnalysis(code, inputSizes, iterations = 10, inputMode = 'array') {
         times.push(end - start);
       } catch (e) {
         // If any iteration fails (e.g., timeout), we invalidate the results for this input size.
-        console.error(`Execution failed for input size ${n}:`, e.message);
+        console.error(`Execution failed for input size ${stringify(n)}:`, e.message);
         // We will return the data points gathered so far and let the server decide how to proceed.
         // Or we could throw, aborting the whole analysis. Let's throw to be safe.
         throw new Error(`Execution timed out or failed for input size n=${n}. Details: ${e.message}`);
@@ -160,7 +161,7 @@ function determineComplexity(dataPoints) {
     } else {
       bestModel = o1Model; // Default to O(1) otherwise
     }
-    
+
     confidence = 95; // Assign a high, fixed confidence score based on this heuristic.
   } else {
     // Standard logic for macroscopic measurements: prefer simpler models if they are "close enough".

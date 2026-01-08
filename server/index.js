@@ -1,4 +1,5 @@
 
+const v8 = require('v8');
 const express = require('express');
 const cors = require('cors');
 const { VM } = require('vm2');
@@ -20,6 +21,8 @@ const chartJSNodeCanvas = new ChartJSNodeCanvas({
     }
 });
 
+
+
 app.post('/api/analyze', (req, res) => {
     const { code, algoName, inputMode, inputSizes } = req.body;
 
@@ -30,6 +33,22 @@ app.post('/api/analyze', (req, res) => {
         !inputMode || (inputMode !== 'array' && inputMode !== 'number') ||
         !inputSizes || !Array.isArray(inputSizes) || inputSizes.length === 0 || !inputSizes.every(n => typeof n === 'number')) {
         return res.status(400).json({ error: 'Invalid input' });
+    }
+
+        if (inputMode === 'array') {
+        const maxInputSize = Math.max(...inputSizes);
+        const heapStats = v8.getHeapStatistics();
+        const availableMemory = heapStats.heap_size_limit - heapStats.used_heap_size;
+        
+        // Estimate memory needed: 8 bytes per number, plus a 20% safety margin.
+        const requiredMemory = maxInputSize * 8 * 1.2;
+
+        if (requiredMemory > availableMemory) {
+            const maxAllowed = Math.floor((availableMemory / (8 * 1.2)) / 1000) * 1000;
+            return res.status(400).json({ 
+                error: `Input size is too large for available server memory. Please try a max size of around ${maxAllowed.toLocaleString()}.`
+            });
+        }
     }
 
     try {
