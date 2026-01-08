@@ -1,9 +1,11 @@
 # Big O Notation Calculator
 
-A full-stack web application designed to analyze the time complexity (Big O notation) of JavaScript functions. Submit your code, choose an input growth strategy, and get back a detailed analysis with a confidence score and a visual graph of its performance.
+A full-stack web application designed to analyze the time complexity (Big O notation) of JavaScript functions. Submit your code, choose an input growth strategy, and get back a semi-detailed analysis with a confidence score and visual representation of its performance.
 
-Pending Live Demo: Link to your live demo here
-Pending Screenshot of the Big O Calculator <!-- TODO: Add a screenshot of the application -->
+![Screenshot](./Big O Calculator.png)
+
+Pending Live Demo: 
+
 
 ---
 
@@ -19,8 +21,7 @@ Key Features
 
 Technologies Used
 *   Frontend: React, CodeMirror
-*   Backend: Node.js, Express
-*   Security: vm2 Sandbox
+*   Backend: Node.js, Express and vm2 Sandbox
 *   Data Visualization: chartjs-node-canvas
 
 ---
@@ -32,22 +33,31 @@ Technologies Used
 
 ### Installation & Running the App
 1.  Clone the repository:
-        git clone https://github.com/Aureliusf/bigOcalculator.git
-    cd bigOcalculator
+        ```
+          git clone https://github.com/Aureliusf/bigOcalculator.git
+        ```
+        ```
+          cd bigOcalculator
+        ```
     
 2.  Install all dependencies:
     This single command will install dependencies for the root, server, and web-frontend packages.
+    ```
         npm install && (cd server && npm install) && (cd web-frontend && npm install)
+    ```
     
 3.  Start the application:
     This command will start both the backend server and the frontend React development server.
+    ```
         npm run start:web
+    ```
     
 The application will be available at http://localhost:3000.
 
 ---
 
 ## How to Use
+Once the webapp is running you can:
 1.  Write Your Code: Enter the JavaScript function you want to analyze into the code editor.
 2.  Select Growth Strategy: Choose how the input size (n) should grow for the test:
     *   Powers of 10: Good for a broad overview (e.g., 10, 100, 1000).
