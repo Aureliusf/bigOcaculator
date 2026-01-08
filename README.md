@@ -2,7 +2,7 @@
 
 A full-stack web application designed to analyze the time complexity (Big O notation) of JavaScript functions. Submit your code, choose an input growth strategy, and get back a semi-detailed analysis with a confidence score and visual representation of its performance.
 
-![Screenshot](./Big%20O%20Calculator.png).
+![Screenshot](./Big%20O%20Calculator.png)
 
 Pending Live Demo: 
 
